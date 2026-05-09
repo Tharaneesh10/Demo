@@ -1,4 +1,4 @@
-name: Deploy index.html to EC2 via SCP
+name: Deploy Chatbot to EC2
 
 on:
   push:
@@ -11,41 +11,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-    - name: Show Repository Structure
-      run: |
-        pwd
-        ls -la
+      - name: Install Dependencies
+        run: |
+          cd convai-chatbot
+          npm install
 
-    # Create SSH key
-    - name: Create SSH Key
-      run: |
-        echo "${{ secrets.EC2_SSH_KEY }}" | base64 -d > key.pem
-        chmod 600 key.pem
+      - name: Build React App
+        run: |
+          cd convai-chatbot
+          npm run build
 
-    # Copy index.html to EC2
-    - name: Upload index.html to EC2
-      run: |
-        scp -o StrictHostKeyChecking=no -i key.pem \
-        index.html \
-        ubuntu@16.16.204.18:/home/ubuntu/
+      - name: Create SSH Key
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" | base64 -d > key.pem
+          chmod 600 key.pem
 
-    # Deploy on EC2
-    - name: Deploy to Nginx
-      run: |
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@16.16.204.18 << 'EOF'
+      - name: Upload Build Files to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no -i key.pem -r \
+          convai-chatbot/dist/* \
+          ubuntu@16.16.204.18:/home/ubuntu/chatbot-build/
 
-        echo "Moving index.html to nginx directory..."
+      - name: Deploy to Nginx
+        run: |
+          ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@16.16.204.18 << 'EOF'
 
-        sudo mv /home/ubuntu/index.html /var/www/html/index.html
+          sudo mkdir -p /var/www/html
 
-        echo "Restarting nginx..."
+          sudo rm -rf /var/www/html/*
 
-        sudo systemctl restart nginx
+          sudo cp -r /home/ubuntu/chatbot-build/* /var/www/html/
 
-        echo "Deployment completed."
+          sudo systemctl restart nginx
 
-        EOF
+          echo "Deployment Successful"
+
+          EOF
